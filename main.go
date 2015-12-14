@@ -7,11 +7,11 @@
 package main
 
 import (  
-    "fmt"
     "net"
-    "os"
-    "strconv"
+    "github.com/ozzadar/world_server/client"
+    "container/list"
     "bytes"
+    "github.com/ozzadar/world_server/common"
 )
 
 const (  
@@ -20,51 +20,119 @@ const (
     CONN_TYPE = "tcp"
 )
 
+
+
 func main() {  
-    // Listen for incoming connections.
-    l, err := net.Listen(CONN_TYPE, ":"+CONN_PORT)
-    if err != nil {
-        fmt.Println("Error listening:", err.Error())
-        os.Exit(1)
-    }
-    // Close the listener when the application closes.
-    defer l.Close()
-    fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
-    for {
-        // Listen for an incoming connection.
-        conn, err := l.Accept()
-        if err != nil {
-            fmt.Println("Error accepting: ", err.Error())
-            os.Exit(1)
+  common.Log ("Hello Server!")
+
+  clientList := list.New()
+  in := make(chan string)
+
+  go IOHandler(in, clientList)
+
+  service := ":1337"
+  tcpAddr, error := net.ResolveTCPAddr("tcp", service)
+
+  if error != nil {
+      common.Log(error)
+  } else {
+    netListen, error := net.Listen(tcpAddr.Network(), tcpAddr.String())
+
+    if error != nil {
+      common.Log(error)
+    } else {
+      defer netListen.Close()
+
+      for {
+        common.Log("Waiting for clients")
+
+        connection, error := netListen.Accept()
+
+        if error != nil {
+          common.Log(error)
+        } else {
+          go ClientHandler(connection, in, clientList)
         }
-
-        //logs an incoming message
-        fmt.Printf("Received message %s -> %s \n", conn.RemoteAddr(), conn.LocalAddr())
-
-        // Handle connections in a new goroutine. (threading)
-        go handleRequest(conn)
+      }
     }
-}
-
-// Handles incoming requests.
-func handleRequest(conn net.Conn) {  
-  // Make a buffer to hold incoming data.
-  buf := make([]byte, 1024)
-  // Read the incoming connection into the buffer.
-  reqLen, err := conn.Read(buf)
-  if err != nil {
-    fmt.Println("Error reading:", err.Error())
   }
-  // Builds the message.
-  message := "Hi, I received your message! It was "
-  message += strconv.Itoa(reqLen) 
-  message += " bytes long and that's what it said: \"" 
-  n := bytes.Index(buf, []byte{0})
-  message += string(buf[:n-1])
-  message += "\" ! Honestly I have no clue about what to do with your messages, so Bye Bye!\n"
-
-  // Write the message in the connection channel.
-  conn.Write([]byte(message));
-  // Close the connection when you're done with it.
-  conn.Close()
 }
+
+func IOHandler(Incoming <-chan string, clientList *list.List) {
+  for {
+    common.Log("IOHandler: Waiting for input")
+    input := <-Incoming
+    common.Log("IOHandler: Handling ", input)
+
+    for e := clientList.Front(); e != nil; e = e.Next() {
+      cli := e.Value.(client.Client)
+      cli.Incoming <-input
+    }
+  }
+}
+
+func ClientReader(cli *client.Client) {
+  buffer := make([]byte,2048)
+
+  for cli.Read(buffer) {
+    if bytes.Equal(buffer, []byte("/quit")) {
+      cli.Close()
+      break
+    }
+
+    common.Log("ClientReader received ", cli.Name, "> ", string(buffer))
+    send := cli.Name + "> "+ string(buffer)
+    cli.Outgoing <- send
+
+    for i := 0; i < 2048; i++ {
+      buffer[i] = 0x00
+    }
+  }
+
+  cli.Outgoing <- cli.Name + " has left chat"
+  common.Log("ClientReader stopped for ", cli.Name)
+
+}
+
+func ClientSender(cli *client.Client) {
+  for {
+    select {
+      case buffer := <-cli.Incoming:
+        common.Log("ClientSender sending ", string(buffer), " to ", cli.Name)
+        count := 0
+
+        for i:=0; i<len(buffer); i++ {
+          if buffer[i] == 0x00 {
+            break
+          }
+          count++
+        }
+        common.Log("Send size: ", count)
+        cli.Conn.Write([]byte(buffer)[0:count])
+      case <-cli.Quit:
+        common.Log("Client ", cli.Name, " quitting")
+        cli.Conn.Close()
+        break
+    }
+  }
+}
+
+func ClientHandler(conn net.Conn, ch chan string, clientList *list.List) {
+  buffer := make([]byte, 1024)
+  bytesRead, error := conn.Read(buffer)
+
+  if error != nil {
+    common.Log("Client connection error: ", error)
+  }
+
+  name := string(buffer[0:bytesRead])
+  newClient := &client.Client{name, make(chan string), ch, conn, make(chan bool), clientList}
+
+  go ClientSender(newClient)
+  go ClientReader(newClient)
+
+  clientList.PushBack(*newClient)
+
+  ch <-string(name + " has joined the chat")
+}
+
