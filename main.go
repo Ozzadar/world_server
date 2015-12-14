@@ -98,7 +98,7 @@ func ClientSender(cli *client.Client) {
   for {
     select {
       case buffer := <-cli.Incoming:
-        common.Log("ClientSender sending ", string(buffer), " to ", cli.Name)
+        common.Log("ClientSender sending \" ", string(buffer), " \" to ", cli.Name)
         count := 0
 
         for i:=0; i<len(buffer); i++ {
