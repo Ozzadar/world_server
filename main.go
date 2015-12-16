@@ -9,6 +9,7 @@ package main
 import (  
     "net"
     "github.com/ozzadar/world_server/client"
+    "github.com/ozzadar/world_server/database"
     "container/list"
     "bytes"
     "github.com/ozzadar/world_server/common"
@@ -24,7 +25,7 @@ const (
 
 func main() {  
   common.Log ("Hello Server!")
-
+  database.InitDB()
   clientList := list.New()
   in := make(chan string)
 
@@ -81,8 +82,13 @@ func ClientReader(cli *client.Client) {
     }
 
     common.Log("ClientReader received ", cli.Name, "> ", string(buffer))
-    send := cli.Name + "> "+ string(buffer)
-    cli.Outgoing <- send
+    send := string(buffer)
+
+    command, arguments, valid := common.IsCommand(send)
+
+    if valid {
+      cli.ExecuteCommand(command, arguments)
+    }    
 
     for i := 0; i < 2048; i++ {
       buffer[i] = 0x00
@@ -118,21 +124,12 @@ func ClientSender(cli *client.Client) {
 }
 
 func ClientHandler(conn net.Conn, ch chan string, clientList *list.List) {
-  buffer := make([]byte, 1024)
-  bytesRead, error := conn.Read(buffer)
 
-  if error != nil {
-    common.Log("Client connection error: ", error)
-  }
-
-  name := string(buffer[0:bytesRead])
-  newClient := &client.Client{name, make(chan string), ch, conn, make(chan bool), clientList}
+  newClient := &client.Client{"Unauthenticated", false, common.Vector3{0,0,0} , make(chan string), ch, conn, make(chan bool), clientList}
 
   go ClientSender(newClient)
   go ClientReader(newClient)
 
   clientList.PushBack(*newClient)
-
-  ch <-string(name + " has joined the chat")
 }
 

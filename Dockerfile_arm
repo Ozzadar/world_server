@@ -1,0 +1,7 @@
+FROM armhfbuild/golang1.5
+
+MAINTAINER Paul Mauviel
+
+ADD . /go/src/github.com/ozzadar/world_server
+
+CMD ["go", "run", "/go/src/github.com/ozzadar/world_server/main.go"]
