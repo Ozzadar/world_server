@@ -96,7 +96,6 @@ func ClientReader(cli *client.Client) {
   }
 
   cli.Outgoing <- cli.Name + " has left chat"
-  cli.RemoveMe()
   common.Log("ClientReader stopped for ", cli.Name)
 
 }
@@ -118,7 +117,8 @@ func ClientSender(cli *client.Client) {
         cli.Conn.Write([]byte(buffer)[0:count])
       case <-cli.Quit:
         common.Log("Client ", cli.Name, " quitting")
-        cli.Conn.Close()
+
+        cli.Close()
         break
     }
   }
