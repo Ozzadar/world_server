@@ -96,6 +96,7 @@ func ClientReader(cli *client.Client) {
   }
 
   cli.Outgoing <- cli.Name + " has left chat"
+  cli.RemoveMe()
   common.Log("ClientReader stopped for ", cli.Name)
 
 }
