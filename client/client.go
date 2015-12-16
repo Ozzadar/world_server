@@ -96,6 +96,8 @@ func (c *Client) ExecuteCommand(command common.Command, arguments []string) {
 				send := c.Name + " has just joined the world."
 
 				c.Outgoing <- send
+			} else {
+				c.Conn.Write([]byte("Bad Credentials"))
 			}
 
 		case common.SAY:
